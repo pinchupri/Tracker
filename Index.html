@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaborative Payments Tracker</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+            color: #334155;
+        }
+        .container {
+            max-width: 900px;
+            margin: auto;
+            padding: 1.5rem;
+        }
+        .card {
+            background-color: #ffffff;
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            padding: 2rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div class="container p-6">
+        <h1 class="text-3xl font-bold text-center text-blue-800 mb-6">Payments Tracker</h1>
+        
+        <div id="auth-status" class="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded-md mb-6 hidden">
+            <span id="user-info" class="font-semibold"></span>
+        </div>
+
+        <!-- Summary Section -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
+            <div class="bg-green-100 p-6 rounded-xl shadow-md">
+                <h2 class="text-xl font-semibold text-green-700">Total Received</h2>
+                <p id="total-received" class="text-3xl font-bold mt-2 text-green-800">₹0.00</p>
+            </div>
+            <div class="bg-red-100 p-6 rounded-xl shadow-md">
+                <h2 class="text-xl font-semibold text-red-700">Total Paid</h2>
+                <p id="total-paid" class="text-3xl font-bold mt-2 text-red-800">₹0.00</p>
+            </div>
+        </div>
+
+        <!-- Add Payment Form -->
+        <div class="card mb-8">
+            <h2 class="text-2xl font-semibold mb-4 text-blue-700">Add New Entry</h2>
+            <form id="payment-form" class="space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="date" class="block text-sm font-medium text-gray-700">Date</label>
+                        <input type="date" id="date" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                    </div>
+                    <div>
+                        <label for="party" class="block text-sm font-medium text-gray-700">Party Name</label>
+                        <input type="text" id="party" placeholder="E.g., Brother, Supplier" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="paid" class="block text-sm font-medium text-gray-700">Amount Paid (₹)</label>
+                        <input type="number" id="paid" placeholder="Enter amount paid" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                    </div>
+                    <div>
+                        <label for="received" class="block text-sm font-medium text-gray-700">Amount Received (₹)</label>
+                        <input type="number" id="received" placeholder="Enter amount received" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                    </div>
+                </div>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition ease-in-out duration-150">
+                    Add Entry
+                </button>
+            </form>
+        </div>
+
+        <!-- Payments Table -->
+        <div class="card">
+            <h2 class="text-2xl font-semibold mb-4 text-blue-700">Recent Entries</h2>
+            <div class="overflow-x-auto rounded-lg shadow-md">
+                <table class="min-w-full bg-white">
+                    <thead class="bg-gray-200 text-gray-700 uppercase text-sm leading-normal">
+                        <tr>
+                            <th class="py-3 px-6 text-left">Date</th>
+                            <th class="py-3 px-6 text-left">Party</th>
+                            <th class="py-3 px-6 text-left">Paid (₹)</th>
+                            <th class="py-3 px-6 text-left">Received (₹)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="payments-list" class="text-gray-600 text-sm font-light">
+                        <!-- Payments will be added here by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            <p id="no-payments" class="text-center text-gray-500 mt-4 hidden">No payments recorded yet.</p>
+        </div>
+
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, getDocs, where, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Set Firebase debug log level
+        setLogLevel('debug');
+
+        // Global variables provided by the canvas environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        let userId = null;
+
+        const paymentsCollectionPath = `/artifacts/${appId}/public/data/payments`;
+        const paymentDocId = 'daily-log'; // Using a single document to store an array of entries
+
+        // DOM elements
+        const paymentForm = document.getElementById('payment-form');
+        const paymentsList = document.getElementById('payments-list');
+        const totalReceivedEl = document.getElementById('total-received');
+        const totalPaidEl = document.getElementById('total-paid');
+        const noPaymentsEl = document.getElementById('no-payments');
+        const authStatusEl = document.getElementById('auth-status');
+        const userInfoEl = document.getElementById('user-info');
+        
+        // This function displays a custom modal message instead of alert()
+        function showMessage(message) {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex justify-center items-center';
+            modal.innerHTML = `
+                <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full">
+                    <p class="text-center text-gray-700 mb-4">${message}</p>
+                    <button class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-xl" onclick="this.parentElement.parentElement.remove()">
+                        OK
+                    </button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        // Authentication and data fetching
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                userId = user.uid;
+                console.log("User authenticated:", userId);
+                authStatusEl.classList.remove('hidden');
+                userInfoEl.innerText = `Authenticated User ID: ${userId}. Share this ID with your brother to coordinate entries.`;
+                
+                // Set up real-time listener for payments
+                const paymentsDocRef = doc(db, paymentsCollectionPath, paymentDocId);
+                onSnapshot(paymentsDocRef, (docSnap) => {
+                    const payments = docSnap.exists() ? docSnap.data().entries : [];
+                    renderPayments(payments);
+                    calculateTotals(payments);
+                }, (error) => {
+                    console.error("Error fetching payments:", error);
+                    showMessage("Failed to load payments. Please check your network connection.");
+                });
+            } else {
+                // Sign in with the custom token or anonymously if no token
+                try {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (error) {
+                    console.error("Firebase Auth Error:", error);
+                    showMessage("Authentication failed. Please try again.");
+                }
+            }
+        });
+
+        // Function to render the list of payments
+        function renderPayments(payments) {
+            paymentsList.innerHTML = '';
+            if (payments.length === 0) {
+                noPaymentsEl.classList.remove('hidden');
+            } else {
+                noPaymentsEl.classList.add('hidden');
+                payments.forEach(payment => {
+                    const row = document.createElement('tr');
+                    row.className = 'border-b border-gray-200 hover:bg-gray-50';
+                    row.innerHTML = `
+                        <td class="py-3 px-6 text-left whitespace-nowrap">${payment.date}</td>
+                        <td class="py-3 px-6 text-left">${payment.party}</td>
+                        <td class="py-3 px-6 text-left">${payment.paid ? `₹${payment.paid.toFixed(2)}` : '-'}</td>
+                        <td class="py-3 px-6 text-left">${payment.received ? `₹${payment.received.toFixed(2)}` : '-'}</td>
+                    `;
+                    paymentsList.appendChild(row);
+                });
+            }
+        }
+
+        // Function to calculate and display totals
+        function calculateTotals(payments) {
+            const totalPaid = payments.reduce((sum, entry) => sum + (entry.paid || 0), 0);
+            const totalReceived = payments.reduce((sum, entry) => sum + (entry.received || 0), 0);
+            totalPaidEl.innerText = `₹${totalPaid.toFixed(2)}`;
+            totalReceivedEl.innerText = `₹${totalReceived.toFixed(2)}`;
+        }
+
+        // Handle form submission
+        paymentForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!userId) {
+                showMessage("Authentication not complete. Please wait a moment and try again.");
+                return;
+            }
+
+            const newEntry = {
+                date: document.getElementById('date').value,
+                party: document.getElementById('party').value,
+                paid: parseFloat(document.getElementById('paid').value) || 0,
+                received: parseFloat(document.getElementById('received').value) || 0,
+                timestamp: Date.now() // Used for ordering
+            };
+
+            if (newEntry.paid === 0 && newEntry.received === 0) {
+                showMessage("Please enter either a 'Paid' or 'Received' amount.");
+                return;
+            }
+
+            try {
+                const paymentsDocRef = doc(db, paymentsCollectionPath, paymentDocId);
+                const docSnap = await getDoc(paymentsDocRef);
+                const currentEntries = docSnap.exists() ? docSnap.data().entries : [];
+                
+                // Add new entry and sort by timestamp in descending order
+                const updatedEntries = [...currentEntries, newEntry].sort((a, b) => b.timestamp - a.timestamp);
+                
+                await setDoc(paymentsDocRef, { entries: updatedEntries });
+
+                // Clear form
+                paymentForm.reset();
+
+            } catch (error) {
+                console.error("Error adding document:", error);
+                showMessage("Failed to save entry. Please try again.");
+            }
+        });
+
+    </script>
+</body>
+</html>
