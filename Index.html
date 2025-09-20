@@ -1,10 +1,9 @@
-<html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Collaborative Payments Tracker</title>
-    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -34,7 +33,6 @@
             <span id="user-info" class="font-semibold"></span>
         </div>
 
-        <!-- Summary Section -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
             <div class="bg-green-100 p-6 rounded-xl shadow-md">
                 <h2 class="text-xl font-semibold text-green-700">Total Received</h2>
@@ -46,7 +44,6 @@
             </div>
         </div>
 
-        <!-- Add Payment Form -->
         <div class="card mb-8">
             <h2 class="text-2xl font-semibold mb-4 text-blue-700">Add New Entry</h2>
             <form id="payment-form" class="space-y-4">
@@ -76,7 +73,6 @@
             </form>
         </div>
 
-        <!-- Payments Table -->
         <div class="card">
             <h2 class="text-2xl font-semibold mb-4 text-blue-700">Recent Entries</h2>
             <div class="overflow-x-auto rounded-lg shadow-md">
@@ -90,8 +86,7 @@
                         </tr>
                     </thead>
                     <tbody id="payments-list" class="text-gray-600 text-sm font-light">
-                        <!-- Payments will be added here by JavaScript -->
-                    </tbody>
+                        </tbody>
                 </table>
             </div>
             <p id="no-payments" class="text-center text-gray-500 mt-4 hidden">No payments recorded yet.</p>
@@ -99,11 +94,10 @@
 
     </div>
 
-    <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, getDocs, where, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Set Firebase debug log level
@@ -121,7 +115,7 @@
         let userId = null;
 
         const paymentsCollectionPath = `/artifacts/${appId}/public/data/payments`;
-        const paymentDocId = 'daily-log'; // Using a single document to store an array of entries
+        const paymentDocId = 'daily-log';
 
         // DOM elements
         const paymentForm = document.getElementById('payment-form');
@@ -155,7 +149,6 @@
                 authStatusEl.classList.remove('hidden');
                 userInfoEl.innerText = `Authenticated User ID: ${userId}. Share this ID with your brother to coordinate entries.`;
                 
-                // Set up real-time listener for payments
                 const paymentsDocRef = doc(db, paymentsCollectionPath, paymentDocId);
                 onSnapshot(paymentsDocRef, (docSnap) => {
                     const payments = docSnap.exists() ? docSnap.data().entries : [];
@@ -166,7 +159,6 @@
                     showMessage("Failed to load payments. Please check your network connection.");
                 });
             } else {
-                // Sign in with the custom token or anonymously if no token
                 try {
                     if (initialAuthToken) {
                         await signInWithCustomToken(auth, initialAuthToken);
@@ -187,7 +179,9 @@
                 noPaymentsEl.classList.remove('hidden');
             } else {
                 noPaymentsEl.classList.add('hidden');
-                payments.forEach(payment => {
+                // Sort payments by timestamp in descending order for display
+                const sortedPayments = [...payments].sort((a, b) => b.timestamp - a.timestamp);
+                sortedPayments.forEach(payment => {
                     const row = document.createElement('tr');
                     row.className = 'border-b border-gray-200 hover:bg-gray-50';
                     row.innerHTML = `
@@ -223,33 +217,8 @@
                 party: document.getElementById('party').value,
                 paid: parseFloat(document.getElementById('paid').value) || 0,
                 received: parseFloat(document.getElementById('received').value) || 0,
-                timestamp: Date.now() // Used for ordering
+                timestamp: Date.now()
             };
 
             if (newEntry.paid === 0 && newEntry.received === 0) {
                 showMessage("Please enter either a 'Paid' or 'Received' amount.");
-                return;
-            }
-
-            try {
-                const paymentsDocRef = doc(db, paymentsCollectionPath, paymentDocId);
-                const docSnap = await getDoc(paymentsDocRef);
-                const currentEntries = docSnap.exists() ? docSnap.data().entries : [];
-                
-                // Add new entry and sort by timestamp in descending order
-                const updatedEntries = [...currentEntries, newEntry].sort((a, b) => b.timestamp - a.timestamp);
-                
-                await setDoc(paymentsDocRef, { entries: updatedEntries });
-
-                // Clear form
-                paymentForm.reset();
-
-            } catch (error) {
-                console.error("Error adding document:", error);
-                showMessage("Failed to save entry. Please try again.");
-            }
-        });
-
-    </script>
-</body>
-</html>
